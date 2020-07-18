@@ -1,5 +1,6 @@
 import { Component, AfterViewInit } from '@angular/core';
 import * as THREE from 'three';
+// @ts-ignore
 import Stats from 'stats.js';
 import {GUI} from 'dat.gui';
 import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls';
@@ -32,15 +33,19 @@ export class MarchingViewComponent implements AfterViewInit{
   /** height of the canvas */
   protected height = window.innerHeight - 50;
   /** configs */
-  protected maxIters = 32;
+  protected gui;
+  protected maxIters = 64;
   protected worldScale = 1.;
   protected tolerance = 1e-7;
-  protected stepMultiplier = 1.0;
+  protected stepMultiplier = 0.4;
   protected tiled = false;
   protected displace = false;
   protected drawDistance = 500.;
   protected isAnimating = true;
   protected shadows = true;
+  /** Fractal configs*/
+  protected bailout = 150;
+  protected fracIterations = 9;
   /** Scene for the view */
   protected scene;
   /** Camera of the view */
@@ -110,10 +115,28 @@ export class MarchingViewComponent implements AfterViewInit{
   }
 
   initInteractive(): void {
-    const gui = new GUI();
-    const sceneFolder = gui.addFolder('Scene');
+    this.gui = new GUI();
+    const sceneFolder = this.gui.addFolder('Scene');
     const geoController = sceneFolder.add({Geometry: 'simple'}, 'Geometry',
       [ 'union', 'intersection', 'infinite', 'lightbulb', 'pyramid', 'sponge', 'mandelbulb' ] );
+
+    const itersController = sceneFolder.add(this, 'maxIters', 2, 256);
+    const toleranceController = sceneFolder.add(this, 'tolerance');
+    const drawDistanceController = sceneFolder.add(this, 'drawDistance', 1., 2000.);
+    const stepController = sceneFolder.add(this, 'stepMultiplier', 0.1, 1.);
+    const worldScaleController = sceneFolder.add(this, 'worldScale', .01, 5.);
+
+    const tiledController = sceneFolder.add(this, 'tiled');
+    const animatedController = sceneFolder.add(this, 'isAnimating');
+    const displaceController = sceneFolder.add(this, 'displace');
+    const shadowsController = sceneFolder.add(this, 'shadows');
+
+
+    const fractalFolder = this.gui.addFolder('Fractal');
+    const bailoutController = fractalFolder.add(this, 'bailout', 1, 200);
+    const fracIterationsController = fractalFolder.add(this, 'fracIterations', 5, 50, 1);
+
+
     geoController.onChange((type) => {
       switch (type){
         case 'union':
@@ -142,16 +165,6 @@ export class MarchingViewComponent implements AfterViewInit{
       }
     });
 
-    const itersController = sceneFolder.add(this, 'maxIters', 2, 256);
-    const toleranceController = sceneFolder.add(this, 'tolerance');
-    const drawDistanceController = sceneFolder.add(this, 'drawDistance', 1., 2000.);
-    const stepController = sceneFolder.add(this, 'stepMultiplier', 0.1, 1.);
-    const worldScaleController = sceneFolder.add(this, 'worldScale', .01, 5.);
-
-    const tiledController = sceneFolder.add(this, 'tiled');
-    const animatedController = sceneFolder.add(this, 'isAnimating');
-    const displaceController = sceneFolder.add(this, 'displace');
-    const shadowsController = sceneFolder.add(this, 'shadows');
 
   }
 
@@ -183,7 +196,9 @@ export class MarchingViewComponent implements AfterViewInit{
       tolerance: {type: 'f', value: this.tolerance},
       worldScale: {type: 'f', value: this.worldScale},
       displace: {type: 'b', value: this.displace},
-      shadows: {type: 'b', value: this.shadows}
+      shadows: {type: 'b', value: this.shadows},
+      bailout: {type: 'f', value: this.bailout},
+      fracIterations: {type: 'i', value: this.fracIterations},
     };
     uniforms = THREE.UniformsUtils.merge(
       [THREE.UniformsLib.lights,
@@ -223,6 +238,9 @@ export class MarchingViewComponent implements AfterViewInit{
     this.material.uniforms.scene.value = this.sceneType;
     this.material.uniforms.drawDistance.value = this.drawDistance;
     this.material.uniforms.shadows.value = this.shadows;
+    this.material.uniforms.bailout.value = this.bailout;
+    this.material.uniforms.fracIterations.value = this.fracIterations;
+
 
     // this.cube.rotation.x += 0.01;
     // this.cube.rotation.y += 0.01;

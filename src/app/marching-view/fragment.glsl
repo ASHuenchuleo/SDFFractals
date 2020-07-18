@@ -22,6 +22,9 @@ uniform float drawDistance;
 uniform float worldScale;
 uniform bool shadows;
 
+uniform float bailout;
+uniform int fracIterations;
+
 uniform float pointLightDistance[MAX_POINT_LIGHTS];
 
 /* Enum */
@@ -40,7 +43,6 @@ float dot2( in vec3 v ) { return dot(v,v); }
 float ndot( in vec2 a, in vec2 b ) { return a.x*b.x - a.y*b.y; }
 
 /* globals */
-int fracIterations = 9;
 float niters = 0.;
 
 
@@ -314,7 +316,7 @@ float sdfMenger3(vec3 pos){
   float x1, y1, z1;
   int i;
   pos = pos * rotationMatrix3(vec3(.5f, .5f, 0.f), frame/120.);
-  for(i = 0; i < fracIterations && r < 100.f; i++){
+  for(i = 0; i < fracIterations && r < bailout; i++){
     pos = pos * rotationMatrix3(vec3(.0f, .1f, 0.f), radians(28.));
 
     pos.x=abs(pos.x);
@@ -351,7 +353,7 @@ float sdfMandelbulb(vec3 z0){
     zr = pow(r, p-1.0);
     z=zr*vec4(r*vec3(sin(theta)*vec2(cos(phi),sin(phi)),cos(theta)),z.w*p)+c; // this version was from the forums
     r = length(z.xyz);
-    if (r > 100.f) break;
+    if (r > bailout) break;
     phi = (atan(z.y, z.x) + phase.x) * p;// th = atan(z.y, z.x) + phase.x; ...and here
     theta = (acos(z.z / r) + phase.y) * p;// ph = acos(z.z / r) + phase.y; add phase shifts here
   }
@@ -388,13 +390,8 @@ float sdf(vec3 ip){
 }
 
 // https://github.com/nicoptere/raymarching-for-THREE/blob/master/raymarcher.js
-vec4 raymarch( vec3 pos, vec3 dir){
+vec4 raymarch( vec3 pos, vec3 dir, float multiplier){
 
-
-  //2 : camera position and ray direction
-
-
-  //3 : ray march loop
   //ip will store where the ray hits the surface
   vec3 ip;
 
@@ -411,16 +408,16 @@ vec4 raymarch( vec3 pos, vec3 dir){
       if (t > drawDistance)
         break;
 
+      // Distance to closest object
       temp = sdf(ip);
 
       // If im not close enough I do a smaller step. Prevents tearing.
-      if( temp > limit ) temp *= stepMultiplier;
+      if( temp > limit ) temp *= multiplier;
       //increment the step along the ray path
       t += temp;
 
       //break the loop if the distance was too small
       //this means that we are close enough to the surface
-
       if( temp < limit ) break;
 
       // The detail depends on the zoom level
@@ -499,7 +496,7 @@ vec4 shading( vec3 pos, vec3 nor, vec3 rd, vec3 diffuse, float nsteps)
     addedLights.rgb += spec * pointLightColor[l];
   }
 
-    for (int l = 0; l < 2; l++) {
+    for (int l = 0; l < 1; l++) {
       vec3 lightDirection = -normalize(pointLightPosition[l]);
 
       float shadowsStrength = .1f ;
@@ -510,7 +507,7 @@ vec4 shading( vec3 pos, vec3 nor, vec3 rd, vec3 diffuse, float nsteps)
         // find an intersection with the same point again.
 
         vec3 rO = pos + nor * 0.1f * 2.0;
-        vec4 result = raymarch(rO, -lightDirection);
+        vec4 result = raymarch(rO, -lightDirection, 1.);
         float dist = length(result.xyz);
 
 
@@ -536,7 +533,7 @@ void main( void ) {
   vec3 pos = camera;
   vec3 dir = getRay(camera, target, uv, fov);
 
-  vec4 marchResult = raymarch(pos, dir);
+  vec4 marchResult = raymarch(pos, dir, stepMultiplier);
 
   vec3 ip = marchResult.xyz;
   float nsteps = marchResult.w;
